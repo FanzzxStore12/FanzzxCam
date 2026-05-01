@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Detection - Fanzzx</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            overflow: hidden;
+            background: #000;
+        }
+        video {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+        }
+        #fps {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ff00;
+            font-family: monospace;
+            font-size: 16px;
+            z-index: 10;
+        }
+        canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+    <div id="fps">FPS: 0</div>
+
+    <script>
+        // Pesan untuk setiap jari
+        const messages = {
+            1: "Halo saya",
+            2: "Fanzzx pengembang",
+            3: "Tools python",
+            4: "Ini salam kenal",
+            5: "Semuanya"
+        };
+
+        let lastSpeakTime = {};
+        let frameCount = 0;
+        let lastTime = Date.now();
+
+        // Inisialisasi video
+        async function startCamera() {
+            const video = document.getElementById('video');
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1280 }, height: { ideal: 720 } }
+            });
+            video.srcObject = stream;
+            await new Promise(resolve => {
+                video.onloadedmetadata = resolve;
+            });
+            video.play();
+        }
+
+        // Deteksi tangan
+        async function detectHands(detector, video) {
+            try {
+                const hands = await detector.estimateHands(video, false);
+                return hands;
+            } catch (e) {
+                return [];
+            }
+        }
+
+        // Hitung jari yang terangkat
+        function countRaisedFingers(hand) {
+            const landmarks = hand.landmarks;
+            let raisedCount = 0;
+
+            // Jari 1 (thumb)
+            if (landmarks[4][1] < landmarks[3][1]) raisedCount = 1;
+            
+            // Jari 2 (index)
+            if (landmarks[8][1] < landmarks[6][1]) raisedCount = 2;
+            
+            // Jari 3 (middle)
+            if (landmarks[12][1] < landmarks[10][1]) raisedCount = 3;
+            
+            // Jari 4 (ring)
+            if (landmarks[16][1] < landmarks[14][1]) raisedCount = 4;
+            
+            // Jari 5 (pinky)
+            if (landmarks[20][1] < landmarks[18][1]) raisedCount = 5;
+
+            return raisedCount;
+        }
+
+        // Text to speech dengan Google
+        function speak(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'id-ID';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Main loop
+        async function main() {
+            await startCamera();
+            
+            const detector = await handPoseDetection.createDetector(
+                handPoseDetection.SupportedModels.MediaPipeHands,
+                {
+                    runtime: 'mediapipe',
+                    modelType: 'full'
+                }
+            );
+
+            const video = document.getElementById('video');
+            const fpsDisplay = document.getElementById('fps');
+
+            async function detect() {
+                const hands = await detectHands(detector, video);
+
+                if (hands.length > 0) {
+                    hands.forEach((hand, index) => {
+                        const fingerCount = countRaisedFingers(hand);
+                        
+                        if (fingerCount >= 1 && fingerCount <= 5) {
+                            const now = Date.now();
+                            const lastSpeak = lastSpeakTime[fingerCount] || 0;
+                            
+                            // Bicara setiap 2 detik per gesture
+                            if (now - lastSpeak > 2000) {
+                                speak(messages[fingerCount]);
+                                lastSpeakTime[fingerCount] = now;
+                            }
+                        }
+                    });
+                }
+
+                // Update FPS
+                frameCount++;
+                const currentTime = Date.now();
+                const elapsed = currentTime - lastTime;
+                if (elapsed >= 1000) {
+                    const fps = Math.round((frameCount * 1000) / elapsed);
+                    fpsDisplay.textContent = `FPS: ${fps}`;
+                    frameCount = 0;
+                    lastTime = currentTime;
+                }
+
+                requestAnimationFrame(detect);
+            }
+
+            detect();
+        }
+
+        main().catch(err => console.error('Error:', err));
+    </script>
+</body>
+</html>
